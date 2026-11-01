@@ -1,6 +1,9 @@
 # Pinned to match the engine fork: Servo's crates are built against this and use
 # nightly features on it through RUSTC_BOOTSTRAP (see .cargo/config.toml).
-# Keep in sync with components/servo/rust-toolchain.toml.
+# 1.100.0-beta per user directive (2026-11-02): newer than the engine fork's
+# 1.95.0 pin; the fork's nightly features still compile through
+# RUSTC_BOOTSTRAP. wasip3 declared alongside wasip2 — the engine itself is
+# wasip2-only today; the target list keeps the follow-up port buildable here.
 [toolchain]
-channel = "1.95.0"
-targets = ["wasm32-wasip2"]
+channel = "1.100.0-beta"
+targets = ["wasm32-wasip2", "wasm32-wasip3"]
