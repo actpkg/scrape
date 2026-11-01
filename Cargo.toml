@@ -1,30 +1,28 @@
 [package]
-name = "component-servo"
-description = "Servo browser engine as an ACT component — render a page, read its DOM, interact with it"
-# This is the component's own version, not the engine's. Every component in the
-# workspace versions its tool surface rather than what it wraps -- sqlite is
-# 0.4.2 against SQLite 3, postgres 0.1.2 against PostgreSQL 17. The engine
-# version it was built against is recorded in the README.
-version = "0.7.0"
+name = "component-scrape"
+description = "Render a web page — SPA included — with the Servo engine and return GitHub-Flavored Markdown plus page metadata"
+# This is the component's own version, not the engine's. The engine version it
+# was built against is recorded in the README. Keep in sync with components/servo.
+version = "0.1.0"
 edition = "2024"
 license = "MPL-2.0"
-keywords = ["act", "servo", "browser", "screenshot", "wasm"]
-repository = "https://github.com/actpkg/servo"
+keywords = ["act", "scrape", "markdown", "servo", "wasm"]
+repository = "https://github.com/actpkg/scrape"
 
+# The conversion pipeline compiles on the host too — its unit tests run there
+# (`cargo test --target x86_64-unknown-linux-gnu`).
 [dependencies]
-act-sdk = "0.14"
+htmd = "0.5"
+readabilityrs = "0.1"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 schemars = "1"
-tokio = { version = "1.53", features = ["rt", "time", "macros", "net", "io-util"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
-log = "0.4"
-euclid = "0.22"
-base64 = "0.23"
+act-sdk = "0.14"
 
-# The engine: Servo ported to wasm32-wasip2. It lives in its own fork so that the
-# fork stays a fork — everything in it is shaped for upstream, and nothing about
-# ACT leaks in. `js_jit` selects the prebuilt SpiderMonkey archive; it does not
-# enable machine-code generation, which wasm cannot do.
+# The engine: Servo ported to wasm32-wasip2. It does not compile on the host,
+# so it — and everything only it uses — is gated to wasm builds. Same git dep
+# and the same fork set as components/servo; keep the two in sync.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 servo = { git = "https://github.com/GamePad64/servo", branch = "wasip2-port-v0.5.0", default-features = false, features = [
     "js_jit",
     "baked-in-resources",
@@ -32,18 +30,17 @@ servo = { git = "https://github.com/GamePad64/servo", branch = "wasip2-port-v0.5
 # Referenced explicitly so the linker keeps it: the resource reader registers
 # itself through `inventory`, and a crate nothing names is dropped.
 servo-default-resources = { git = "https://github.com/GamePad64/servo", branch = "wasip2-port-v0.5.0" }
+tokio = { version = "1.53", features = ["rt", "time", "macros", "net", "io-util"] }
+base64 = "0.23"
+log = "0.4"
 
-# The port's vendored crates. `[patch]` applies from the workspace being built,
-# not from the dependency's own workspace, so the list has to be repeated here —
-# without it Cargo would resolve these from crates.io and the build would fail on
-# the threads and platform backends a wasm guest does not have. Keep in sync with
-# `servo-wasi/Cargo.toml`.
-[patch.crates-io]
 # The engine's forks. `[patch]` applies from the workspace being built, not from
-# a dependency's own workspace, so this list has to be repeated here — without it
-# Cargo resolves these from crates.io and the build fails on the threads and
-# platform backends a wasm guest does not have. Keep in sync with
-# `servo-wasi/Cargo.toml`.
+# a dependency's own workspace, so this list is repeated here — without it Cargo
+# resolves these from crates.io and the build fails on the threads and platform
+# backends a wasm guest does not have.
+# Verbatim from components/servo/Cargo.toml — keep in sync with it and with
+# servo-wasi/Cargo.toml.
+[patch.crates-io]
 webrender = { git = "https://github.com/GamePad64/webrender", branch = "wasip2" }
 webrender_api = { git = "https://github.com/GamePad64/webrender", branch = "wasip2" }
 wr_glyph_rasterizer = { git = "https://github.com/GamePad64/webrender", branch = "wasip2" }
@@ -58,7 +55,4 @@ imsz = { git = "https://github.com/GamePad64/imsz", branch = "wasip2" }
 freetype-sys = { git = "https://github.com/GamePad64/freetype-sys", branch = "wasip2" }
 
 [lib]
-crate-type = ["cdylib"]
-
-[profile.release]
-opt-level = "s"
+crate-type = ["cdylib", "rlib"]

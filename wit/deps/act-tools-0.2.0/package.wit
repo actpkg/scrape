@@ -77,9 +77,6 @@ interface types {
 
 interface tool-provider {
   use act:core/types@0.4.0.{cbor, metadata, error};
-  // Only the types referenced directly here are `use`d; `tool-definition` and
-  // `content-part` arrive transitively (inside `list-tools-response` and
-  // `tool-event` respectively) and need no explicit alias.
   use types.{tool-event, list-tools-response};
 
   /// The result of a tool call.
@@ -122,3 +119,4 @@ interface tool-provider {
   /// semantics: `tool-event::error` is terminal.
   call-tool: async func(name: string, arguments: cbor, metadata: metadata) -> tool-result;
 }
+
