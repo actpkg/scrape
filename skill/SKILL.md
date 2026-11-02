@@ -38,8 +38,8 @@ detection; the page that gets captured is whatever existed when settling ended.
 ## Capabilities
 
 - **`wasi:filesystem`** is required even for offline pages: the engine keeps
-  client storage on disk and will not start without a writable directory. Scope
-  the grant to a temporary directory.
+  client storage under `/tmp/servo` and will not start without it writable —
+  grant `/tmp/servo/**`.
 - **`wasi:sockets`** is required for any `url` input — the engine fetches the
   page and its subresources itself, inside the sandbox. Inline `html` needs no
   network. Granting sockets lets the page reach whatever it points at, so

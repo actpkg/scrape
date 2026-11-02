@@ -11,10 +11,10 @@ Needs [`act`](https://github.com/actcore/act-cli). Grab the component from the
 [latest release](https://github.com/actpkg/scrape/releases/latest):
 
 ```bash
-mkdir -p /tmp/scrape # the engine keeps client storage on disk
+mkdir -p /tmp/servo # the engine keeps client storage under /tmp/servo
 
 act call scrape.wasm scrape \
---grant '{"wasi:filesystem":{"mode":"allowlist","allow":[{"path":"/tmp/scrape/**","mode":"rw"}]}}' \
+--grant '{"wasi:filesystem":{"mode":"allowlist","allow":[{"path":"/tmp/servo/**","mode":"rw"}]}}' \
 --allow wasi:sockets \
 --args '{"url":"https://example.com/"}'
 ```
@@ -25,7 +25,7 @@ Two content parts come back: the page as `text/markdown`, and an
 
 ```bash
 act call scrape.wasm scrape \
---grant '{"wasi:filesystem":{"mode":"allowlist","allow":[{"path":"/tmp/scrape/**","mode":"rw"}]}}' \
+--grant '{"wasi:filesystem":{"mode":"allowlist","allow":[{"path":"/tmp/servo/**","mode":"rw"}]}}' \
 --allow wasi:sockets \
 --args '{"url":"https://example.com/post/","mode":"readability"}'
 ```
@@ -72,7 +72,7 @@ settling ended.
 
 | capability | why |
 | --- | --- |
-| `wasi:filesystem` | the engine keeps client storage (localStorage and friends) on disk and will not start without a writable directory — scope it to a temp dir |
+| `wasi:filesystem` | the engine keeps client storage (localStorage and friends) under `/tmp/servo` and will not start without it writable — grant `/tmp/servo/**` |
 | `wasi:sockets` | the engine fetches the page and its subresources itself, over TCP, inside the sandbox; inline `html` needs no network. Implementing its own HTTP is also what leaves WebSockets working |
 
 The page runs inside the sandbox, so what it can reach is the caller's
