@@ -79,11 +79,11 @@ jobs:
           cache-bin: "false"
 
       # Wasm release builds must run cargo +1.95.0: rust-lld in the pinned
-# 1.100.0-beta.7 mis-links mozjs_sys prebuilts (see rust-toolchain.toml).
-- name: Install wasm-link toolchain
-  run: rustup toolchain install 1.95.0 --profile minimal --target wasm32-wasip2
+      # 1.100.0-beta.7 mis-links mozjs_sys prebuilts (see rust-toolchain.toml).
+      - name: Install wasm-link toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --target wasm32-wasip2
 
-- run: just build
+      - run: just build
 
       - run: just pack
 
@@ -93,7 +93,7 @@ jobs:
         with:
           name: component.wasm
           path: target/wasm32-wasip2/release/component_scrape.wasm
-          # It is a ~120 MB artifact; keeping every push for 90 days is waste.
+          # It is a ~128 MB artifact; keeping every push for 90 days is waste.
           retention-days: 14
           compression-level: 0
 
@@ -116,7 +116,7 @@ jobs:
     # Only the canonical branch publishes; PRs get build + e2e only. A manual
     # dispatch re-publishes too — that is how a version goes out again after
     # a tooling fix (act-build 0.14.6's token re-mint is what unstranded this
-    # component's 120 MB layer) without commit churn.
+    # component's 128 MB layer) without commit churn.
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [build, fmt]
     runs-on: ubuntu-latest

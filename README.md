@@ -98,7 +98,7 @@ decision, not the page's.
 
 ## Size
 
-The packed artifact is **~113 MB**. Budget for it when pulling over OCI.
+The packed artifact is **~128 MB** (measured: 128,369,479 B). Budget for it when pulling over OCI.
 
 ## Building it
 
@@ -129,8 +129,6 @@ The engine is shared with the [servo component](../servo) — this component is
 a different consumer of the same port, and the forks below are where the port
 work lives. This repo's own code is the thin layer on top: the scrape tool,
 HTML-to-markdown conversion, and the readability mode.
-
-## The forks
 
 | repo | what it carries |
 | --- | --- |
