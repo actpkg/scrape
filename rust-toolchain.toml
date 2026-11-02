@@ -5,8 +5,9 @@
 # RUSTC_BOOTSTRAP. wasip3 declared alongside wasip2 — the engine itself is
 # wasip2-only today; the target list keeps the follow-up port buildable here.
 #
-# WASM RELEASE BUILDS MUST OVERRIDE THE CHANNEL AT INVOCATION:
+# WASIP2 RELEASE BUILDS MUST OVERRIDE THE CHANNEL AT INVOCATION:
 #     cargo +1.95.0 build --target wasm32-wasip2 --release
+# (wasip3 release builds run on this channel directly: +1.100.0-beta.)
 # rust-lld in 1.100.0-beta.7 mis-links the mozjs_sys prebuilt objects (two
 # `function signature mismatch` warnings in the Unified_cpp objects) and the
 # mis-applied data segments trip a MOZ_RELEASE_ASSERT in the engine's first

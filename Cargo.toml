@@ -17,22 +17,25 @@ readabilityrs = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1"
-act-sdk = "0.14"
+act-sdk = "0.14.3"
 
-# The engine: Servo ported to wasm32-wasip2. It does not compile on the host,
+# The engine: Servo ported to wasm32-wasip3. It does not compile on the host,
 # so it — and everything only it uses — is gated to wasm builds. Same git dep
 # and the same fork set as components/servo; keep the two in sync.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-servo = { git = "https://github.com/GamePad64/servo", branch = "wasip2-port-v0.5.0", default-features = false, features = [
+servo = { git = "https://github.com/GamePad64/servo", branch = "wasip3-port", default-features = false, features = [
     "js_jit",
     "baked-in-resources",
 ] }
 # Referenced explicitly so the linker keeps it: the resource reader registers
 # itself through `inventory`, and a crate nothing names is dropped.
-servo-default-resources = { git = "https://github.com/GamePad64/servo", branch = "wasip2-port-v0.5.0" }
+servo-default-resources = { git = "https://github.com/GamePad64/servo", branch = "wasip3-port", default-features = false }
 tokio = { version = "1.53", features = ["rt", "time", "macros", "net", "io-util"] }
 base64 = "0.23"
 log = "0.4"
+# Same major as the engine's (2.x): the delegate hands us the engine's own
+# `url::Url` values, so the types must be one and the same crate.
+url = "2.5"
 
 # The engine's forks. `[patch]` applies from the workspace being built, not from
 # a dependency's own workspace, so this list is repeated here — without it Cargo
@@ -49,10 +52,22 @@ wr_glyph_rasterizer = { git = "https://github.com/GamePad64/webrender", branch =
 # in the graph and the trait impls stop matching.
 wr_malloc_size_of = { git = "https://github.com/GamePad64/webrender", branch = "wasip2" }
 webrender_build = { git = "https://github.com/GamePad64/webrender", branch = "wasip2" }
-ipc-channel = { git = "https://github.com/GamePad64/ipc-channel", branch = "wasip2" }
 surfman = { git = "https://github.com/GamePad64/surfman", branch = "wasip2" }
 imsz = { git = "https://github.com/GamePad64/imsz", branch = "wasip2" }
 freetype-sys = { git = "https://github.com/GamePad64/freetype-sys", branch = "wasip2" }
+# wasm32-wasip3 source builds: the registry crate hardcodes
+# --target=wasm32-wasip1 onto the jsglue shim, which clashes with the p3
+# sysroot's libc++. GamePad64/mozjs `wasip3` carries the build-system
+# adjustments (wasip3-clang wrappers, gcc_hidden skip, idempotent
+# InitializeUptime); no wasip3 prebuilt archive exists, so SpiderMonkey
+# builds from source (MOZJS_FROM_SOURCE=1, see .cargo/config.toml).
+mozjs_sys = { git = "https://github.com/GamePad64/mozjs", branch = "wasip3" }
+# Bindgen with the wasip3 layout-pass fix: dependent template types
+# (libc++ aligned_storage) leave pruned template type-param items in the
+# item map; stock 0.72.1 panics "Not an item", and once that is bypassed
+# the layout walk recurses to stack overflow. The patch makes the layout
+# pass fallible and depth-capped. To be upstreamed as a bindgen PR.
+bindgen = { git = "https://github.com/GamePad64/rust-bindgen", branch = "wasip3-layout-fix" }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

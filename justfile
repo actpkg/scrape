@@ -1,4 +1,4 @@
-wasm := "target/wasm32-wasip2/release/component_scrape.wasm"
+wasm := "target/wasm32-wasip3/release/component_scrape.wasm"
 # OCI reference to publish to (registry/namespace/name, no tag). Override with OCI_REF.
 component_ref := env("OCI_REF", "actpkg.dev/library/scrape")
 
@@ -28,11 +28,12 @@ setup: init
 # ceiling, so at runtime every grant is refused as "outside ceiling" and the
 # failure points anywhere but at the missing metadata.
 #
-# The +1.95.0 override is load-bearing: rust-lld in 1.100.0-beta.7 mis-links
-# the mozjs_sys prebuilt objects and the resulting binary traps in the
-# engine's first static constructor (see rust-toolchain.toml).
+# wasip3 build: mozjs_sys has no wasip3 prebuilt, so the fork's build.rs
+# falls back to a source build (needs wasi-sdk; see .cargo/config.toml).
+# MOZJS_FROM_SOURCE=1 makes that explicit instead of relying on the
+# prebuilt download failing first.
 build: init
-    cargo +1.95.0 build --target wasm32-wasip2 --release
+    MOZJS_FROM_SOURCE=1 cargo +1.100.0-beta build --target wasm32-wasip3 --release
     {{actbuild}} pack {{wasm}}
 
 # Re-embed act:component metadata and act:skill without rebuilding. `pack` is

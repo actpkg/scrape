@@ -1,6 +1,9 @@
 # Building this component means building a browser engine, and most of the
 # awkward parts are C or C++: SpiderMonkey, FreeType, aws-lc-rs, swgl. Everything
-# here exists to make those compile and link for wasm32-wasip2.
+# here exists to make those compile and link for wasm32-wasip2 and wasm32-wasip3.
+#
+# These env keys carry dashes, so a shell cannot export them (`not a valid
+# identifier`) — they live here, where cargo applies them itself.
 
 [env]
 WASI_SDK_PATH = "/opt/wasi-sdk"
@@ -12,6 +15,20 @@ AR_wasm32-wasip2 = "/opt/wasi-sdk/bin/llvm-ar"
 # ships swgl; without it swgl asserts on a depth function WebRender does pass.
 CFLAGS_wasm32-wasip2 = "--sysroot=/opt/wasi-sdk/share/wasi-sysroot -mllvm -wasm-enable-sjlj -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DNDEBUG"
 CXXFLAGS_wasm32-wasip2 = "--sysroot=/opt/wasi-sdk/share/wasi-sysroot -mllvm -wasm-enable-sjlj -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DNDEBUG"
+# wasip3 uses the target-suffixed wrappers, not bare clang: bare clang's
+# default target is wasip1, so any command line missing `--target` (mozjs's
+# make phase, cc-rs callers that drop it) quietly picks up wasip1 multilib
+# headers and dies on libc++ visibility mismatches. The wrappers force the
+# target for every invocation.
+CC_wasm32-wasip3 = "/opt/wasi-sdk/bin/wasm32-wasip3-clang"
+CXX_wasm32-wasip3 = "/opt/wasi-sdk/bin/wasm32-wasip3-clang++"
+AR_wasm32-wasip3 = "/opt/wasi-sdk/bin/llvm-ar"
+CFLAGS_wasm32-wasip3 = "--sysroot=/opt/wasi-sdk/share/wasi-sysroot -mllvm -wasm-enable-sjlj -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DNDEBUG"
+CXXFLAGS_wasm32-wasip3 = "--sysroot=/opt/wasi-sdk/share/wasi-sysroot -mllvm -wasm-enable-sjlj -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -DNDEBUG"
+# SpiderMonkey has no wasm32-wasip3 prebuilt on servo/mozjs releases — its
+# build.rs falls back to a source build, which needs the target CFLAGS above
+# plus a host clang in PATH. Set per invocation (see justfile build-p3):
+#   MOZJS_FROM_SOURCE=1
 # Servo's own crates use nightly features on a stable toolchain through this.
 RUSTC_BOOTSTRAP = "crown,script,script_webgpu,script_bindings,style_tests,mozjs,mozjs_sys"
 
@@ -28,5 +45,38 @@ rustflags = [
   "-C", "link-arg=-lc++abi",
   "-C", "link-arg=-lunwind",
   # FreeType is compiled with the wasm SjLj lowering; its runtime lives here.
+  "-C", "link-arg=-lsetjmp",
+]
+
+[target.wasm32-wasip3]
+# rustc's --sysroot redirects the toolchain's self-contained dir wholesale,
+# which is what swaps std's libc for the coop one — an -L path would not
+# (and ordering against std's own self-contained dir is a trap). The
+# overlay is the stock beta toolchain tree with wasi-sdk's
+# experimental-coop-threads libc.a (carrying the futex gate and
+# task_context objects), crt1 and libsetjmp copied over self-contained/.
+# Built per servo-port-notes; without it thread::spawn panics at the
+# first std thread the engine starts ("Thread spawning failed" in
+# net::resource_thread). Keep -Clink-self-contained=y so nothing from the
+# stock toolchain leaks back onto the link line.
+rustflags = [
+  "--cfg", "tokio_unstable",
+  "--sysroot", "/mnt/devenv/tmp/beta-coop",
+  "-C", "link-self-contained=y",
+  # libc++ comes from the eh multilib of the STOCK sysroot; that dir holds
+  # only libc++/libc++abi, no libc.a, so it cannot steal `-lc`.
+  "-L", "/opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip3/eh",
+  # Some dependency drags the STOCK sysroot lib dir onto the link line (seen
+  # as -L in the final rustc command, after all native= entries). It appears
+  # AFTER the coop dir below, so -lc resolves inside the overlay's libc.a
+  # and the stock path never wins. Do NOT reorder them: an earlier probe
+  # with the stock dir first produced a binary without task_context. If the
+  # stock path ever lands before this one, the fix is to keep -L order here
+  # AND make sure the overlay libc.a is the coop build (see the sysroot
+  # comment above).
+  "-L", "/mnt/devenv/tmp/beta-coop/lib/rustlib/wasm32-wasip3/lib/self-contained",
+  "-C", "link-arg=-lc++",
+  "-C", "link-arg=-lc++abi",
+  "-C", "link-arg=-lunwind",
   "-C", "link-arg=-lsetjmp",
 ]
