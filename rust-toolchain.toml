@@ -4,6 +4,15 @@
 # 1.95.0 pin; the fork's nightly features still compile through
 # RUSTC_BOOTSTRAP. wasip3 declared alongside wasip2 — the engine itself is
 # wasip2-only today; the target list keeps the follow-up port buildable here.
+#
+# WASM RELEASE BUILDS MUST OVERRIDE THE CHANNEL AT INVOCATION:
+#     cargo +1.95.0 build --target wasm32-wasip2 --release
+# rust-lld in 1.100.0-beta.7 mis-links the mozjs_sys prebuilt objects (two
+# `function signature mismatch` warnings in the Unified_cpp objects) and the
+# mis-applied data segments trip a MOZ_RELEASE_ASSERT in the engine's first
+# static constructor — every guest call traps in InitializeUptime. The
+# engine fork's own 1.95.0 pin is load-bearing: on it the binary runs and
+# the whole e2e suite passes. Revisit when rust-lld lands the fix.
 [toolchain]
 channel = "1.100.0-beta"
 targets = ["wasm32-wasip2", "wasm32-wasip3"]

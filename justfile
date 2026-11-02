@@ -27,8 +27,12 @@ setup: init
 # produces a wasm with no `act:component` section, which declares no capability
 # ceiling, so at runtime every grant is refused as "outside ceiling" and the
 # failure points anywhere but at the missing metadata.
+#
+# The +1.95.0 override is load-bearing: rust-lld in 1.100.0-beta.7 mis-links
+# the mozjs_sys prebuilt objects and the resulting binary traps in the
+# engine's first static constructor (see rust-toolchain.toml).
 build: init
-    cargo build --target wasm32-wasip2 --release
+    cargo +1.95.0 build --target wasm32-wasip2 --release
     {{actbuild}} pack {{wasm}}
 
 # Re-embed act:component metadata and act:skill without rebuilding. `pack` is
