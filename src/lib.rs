@@ -1,3 +1,6 @@
 //! `scrape` — Servo-rendered page → Markdown, as an ACT component.
 //!
-//! Conversion pipeline lands in Task 2, the engine and the tool in Task 3.
+//! Conversion pipeline (this task) is pure and host-testable; the engine and
+//! the tool land next.
+
+pub mod convert;
