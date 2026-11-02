@@ -1,4 +1,5 @@
-//! The Servo engine wrapper: engine singleton, one-page Browser.
+//! The Servo engine wrapper: one engine, one `WebView`, many sequential
+//! pages navigated inside that `WebView`.
 //!
 //! A trimmed copy of `components/servo`'s engine layer — keep engine-version
 //! moves in sync with it. No sessions, no interaction surface: `evaluate`
@@ -30,24 +31,73 @@ const POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 /// The faces compiled into this component, as `(family, builtin: path, bytes)`.
 ///
-/// DejaVu, under the Bitstream Vera licence — see `fonts/LICENSE`. They back the
-/// CSS generic families; a page asking for anything else falls back to these.
-/// Keep in sync with components/servo — same three faces.
+/// Noto, under the SIL Open Font Licence — see `fonts/LICENSE-OFL`. Latin,
+/// Cyrillic and Greek live in the four core faces; the script-specific faces
+/// (Arabic, Devanagari, Hebrew, Thai) and the CJK families back pages in those
+/// scripts, which the four core faces alone could not. A page asking for any
+/// other family falls
+/// back to these via the CSS generic families. Keep in sync with
+/// components/servo — same three core faces plus script coverage.
 const BUILTIN_FONTS: &[(&str, &str, &[u8])] = &[
     (
-        "DejaVu Sans",
-        "builtin:DejaVuSans",
-        include_bytes!("../fonts/DejaVuSans.ttf"),
+        "Noto Sans",
+        "builtin:NotoSans",
+        include_bytes!("../fonts/NotoSans-Regular.ttf"),
     ),
     (
-        "DejaVu Serif",
-        "builtin:DejaVuSerif",
-        include_bytes!("../fonts/DejaVuSerif.ttf"),
+        "Noto Serif",
+        "builtin:NotoSerif",
+        include_bytes!("../fonts/NotoSerif-Regular.ttf"),
     ),
     (
-        "DejaVu Sans Mono",
-        "builtin:DejaVuSansMono",
-        include_bytes!("../fonts/DejaVuSansMono.ttf"),
+        "Noto Sans Mono",
+        "builtin:NotoSansMono",
+        include_bytes!("../fonts/NotoSansMono-Regular.ttf"),
+    ),
+    (
+        "Noto Sans Arabic",
+        "builtin:NotoSansArabic",
+        include_bytes!("../fonts/NotoSansArabic-Regular.ttf"),
+    ),
+    (
+        "Noto Sans Devanagari",
+        "builtin:NotoSansDevanagari",
+        include_bytes!("../fonts/NotoSansDevanagari-Regular.ttf"),
+    ),
+    (
+        "Noto Sans Hebrew",
+        "builtin:NotoSansHebrew",
+        include_bytes!("../fonts/NotoSansHebrew-Regular.ttf"),
+    ),
+    (
+        "Noto Sans Thai",
+        "builtin:NotoSansThai",
+        include_bytes!("../fonts/NotoSansThai-Regular.ttf"),
+    ),
+    (
+        "Noto Sans JP",
+        "builtin:NotoSansJP",
+        include_bytes!("../fonts/NotoSansJP-Regular.otf"),
+    ),
+    (
+        "Noto Sans KR",
+        "builtin:NotoSansKR",
+        include_bytes!("../fonts/NotoSansKR-Regular.otf"),
+    ),
+    (
+        "Noto Sans SC",
+        "builtin:NotoSansSC",
+        include_bytes!("../fonts/NotoSansSC-Regular.otf"),
+    ),
+    (
+        "Noto Sans TC",
+        "builtin:NotoSansTC",
+        include_bytes!("../fonts/NotoSansTC-Regular.otf"),
+    ),
+    (
+        "Noto Sans HK",
+        "builtin:NotoSansHK",
+        include_bytes!("../fonts/NotoSansHK-Regular.otf"),
     ),
 ];
 
@@ -82,47 +132,52 @@ const META_SCRIPT: &str = r#"JSON.stringify({
 // ---------------------------------------------------------------------------
 // Everything from here through `render_js_value` is copied verbatim from
 // components/servo/src/lib.rs except: the `Engine`/`Browser` struct fields,
-// `claim_document`'s message (says "scrapes"), and the removal of
-// `screenshot`, `click`, `scroll` and the session plumbing.
+// the page lifecycle (pages navigate inside the engine's one persistent
+// `WebView` — servo's `render` still leaks each page via `forget`), and the
+// removal of `screenshot`, `click`, `scroll` and the session plumbing.
 // ---------------------------------------------------------------------------
 /// The engine behind every page.
 ///
 /// `ServoBuilder::build` initialises process-global options and panics if it
-/// runs twice, so there is exactly one engine however many pages are open. That
-/// is also Servo's own model: one engine, many `WebView`s — the difference
-/// between a browser and a tab.
+/// runs twice, so there is exactly one engine however many pages are open.
+/// Pages are navigations inside this engine's single `WebView` — the browser
+/// is the tab here.
 pub(crate) struct Engine {
     servo: servo::Servo,
     rendering_context: Rc<servo::SoftwareRenderingContext>,
+    /// The engine's one `WebView`, created lazily on the first page and kept
+    /// for the engine's whole life (see `Browser`).
+    webview: RefCell<Option<servo::WebView>>,
+    /// The delegate of `webview`, mirrored here so later pages can read the
+    /// turn counter without reaching through the `WebView`.
+    watch: RefCell<Rc<PageWatch>>,
 }
 
 thread_local! {
     static ENGINE: RefCell<Option<Rc<Engine>>> = const { RefCell::new(None) };
-    /// Whether this instance has already had a document.
-    ///
-    /// Not "has one now": the limit is for the life of the instance, because a
-    /// closed page's script thread is leaked rather than torn down.
-    static DOCUMENT_USED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Claim this instance's one document, or explain why there is not another.
+/// Watch the one `WebView` from the embedder side.
 ///
-/// Every document Servo opens gets a script thread, and every script thread
-/// creates a SpiderMonkey `JSContext`. SpiderMonkey allows one per thread and a
-/// wasip2 guest has exactly one thread, so the second document dies inside
-/// `JS_NewContext`. That covers a second session, and equally a navigation away
-/// from the first page: both build a new pipeline. Refusing with an explanation
-/// beats taking the component down.
-pub(crate) fn claim_document() -> Result<(), ActError> {
-    if DOCUMENT_USED.with(|used| used.replace(true)) {
-        return Err(ActError::internal(
-            "this component instance scrapes one document and has already used it: \
-             start another instance for another page. Servo gives each document a \
-             script thread, and SpiderMonkey allows one JavaScript context per \
-             thread — a wasip2 guest has one thread.",
-        ));
+/// While a page loads it counts full event-loop turns (`pump` needs the count
+/// to pace the settle window) and records the active document's URL
+/// (`notify_url_changed` fires when the constellation activates a document).
+/// The URL is what makes waiting for a load race-free: the load status alone
+/// can flip to `Complete` for a *previous* document while a navigation is
+/// still in flight, so a wait must observe the new URL before trusting the
+/// status.
+#[derive(Default)]
+struct PageWatch {
+    turns: std::cell::Cell<u64>,
+    url: RefCell<Option<url::Url>>,
+}
+
+impl servo::WebViewDelegate for PageWatch {
+    fn notify_url_changed(&self, _webview: servo::WebView, new_url: url::Url) {
+        *self.url.borrow_mut() = Some(new_url);
     }
-    Ok(())
+
+    fn notify_closed(&self, _webview: servo::WebView) {}
 }
 
 /// The engine, started on first use and sized to fit `width` x `height`.
@@ -160,6 +215,8 @@ pub(crate) fn engine(width: u32, height: u32) -> Result<Rc<Engine>, String> {
         let engine = Rc::new(Engine {
             servo,
             rendering_context,
+            webview: RefCell::new(None),
+            watch: RefCell::new(Rc::new(PageWatch::default())),
         });
         *slot = Some(engine.clone());
         Ok(engine)
@@ -201,24 +258,73 @@ pub(crate) fn target_url(html: Option<String>, url: Option<String>) -> Result<St
     }
 }
 
-/// A live page: one `WebView` on the shared engine.
+/// A live page: the shared engine's one `WebView`, navigated to this call's
+/// target.
+///
+/// The `WebView` itself is never dropped — its `Painter::drop` shuts the
+/// render backend down synchronously, which on the coop thread layout parks
+/// the calling fiber and deadlocks (the exact hang that forced the old
+/// `forget()`). Pages instead come and go by *navigation*: `open` navigates
+/// with `Replace`, so the constellation closes the previous page's pipeline
+/// right away, and `close_page` navigates to `about:blank` the same way,
+/// making the scraped page exit fully (`JS_DestroyContext` runs on the
+/// page's own script thread) before the next call starts.
 pub(crate) struct Browser {
     engine: Rc<Engine>,
     webview: servo::WebView,
+    watch: Rc<PageWatch>,
 }
 
 impl Browser {
     pub(crate) async fn open(url: &str, width: u32, height: u32) -> Result<Browser, String> {
         let engine = engine(width, height)?;
         let parsed = servo::ServoUrl::parse(url).map_err(|error| format!("bad url: {error}"))?;
-        let webview = servo::WebViewBuilder::new(&engine.servo, engine.rendering_context.clone())
-            .url(parsed.into_url())
-            .build();
+        let target = parsed.into_url();
 
-        let browser = Browser { engine, webview };
-        browser.activate();
-        browser.wait_for_load().await;
+        let browser = Browser::attach(engine)?;
+        // A brand-new WebView starts with a pending `about:blank` load (the
+        // builder's implicit initial URL). The constellation aborts any
+        // navigation that arrives while a load for the same browsing context
+        // is still pending, so the first `load_replace` must wait until the
+        // initial document has activated — the watch learns that as the
+        // first `notify_url_changed`. On every later call the URL is already
+        // set and this returns immediately.
+        let ready_deadline = Instant::now() + LOAD_TIMEOUT;
+        while browser.watch.url.borrow().is_none() {
+            if Instant::now() >= ready_deadline {
+                log::warn!("webview's initial about:blank never activated");
+                return Err("webview did not finish initializing".to_owned());
+            }
+            browser.engine.servo.spin_event_loop();
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
+        browser.webview.load_replace(target.clone());
+        browser.wait_for_load(Some(&target)).await;
         Ok(browser)
+    }
+
+    /// The engine's persistent `WebView`, creating it on first use.
+    fn attach(engine: Rc<Engine>) -> Result<Browser, String> {
+        let existing = engine.webview.borrow().clone();
+        if let Some(webview) = existing {
+            let watch = engine.watch.borrow().clone();
+            return Ok(Browser {
+                engine,
+                webview,
+                watch,
+            });
+        }
+        let watch: Rc<PageWatch> = Rc::new(PageWatch::default());
+        let webview = servo::WebViewBuilder::new(&engine.servo, engine.rendering_context.clone())
+            .delegate(watch.clone())
+            .build();
+        *engine.webview.borrow_mut() = Some(webview.clone());
+        *engine.watch.borrow_mut() = watch.clone();
+        Ok(Browser {
+            engine,
+            webview,
+            watch,
+        })
     }
 
     /// Make this the page that paints.
@@ -229,13 +335,25 @@ impl Browser {
         self.webview.show();
     }
 
-    /// Turn the event loop until the page reports it has finished loading.
-    async fn wait_for_load(&self) {
+    /// Turn the event loop until the target page has finished loading.
+    ///
+    /// When `target` is given, the wait requires the constellation to have
+    /// activated a document *at* that URL (`notify_url_changed`) before the
+    /// `Complete` status counts. The status alone is not trustworthy: it
+    /// belongs to whichever document loaded last, so right after a
+    /// `load_replace` it is still `Complete` from the previous page while the
+    /// new navigation has not even started — an early return here reads the
+    /// DOM of the wrong (or dying) document.
+    async fn wait_for_load(&self, target: Option<&url::Url>) {
         let deadline = Instant::now() + LOAD_TIMEOUT;
         loop {
             self.engine.servo.spin_event_loop();
             tokio::time::sleep(POLL_INTERVAL).await;
-            if self.webview.load_status() == servo::LoadStatus::Complete {
+            let url_ok = match target {
+                Some(target) => self.watch.url.borrow().as_ref() == Some(target),
+                None => true,
+            };
+            if url_ok && self.webview.load_status() == servo::LoadStatus::Complete {
                 return;
             }
             if Instant::now() >= deadline {
@@ -245,11 +363,12 @@ impl Browser {
         }
     }
 
-    /// Turn the event loop `turns` times, painting as we go.
+    /// Turn the event loop `turns` full turns, painting as we go.
     pub(crate) async fn pump(&self, turns: u32) {
         for _ in 0..turns {
             self.webview.paint();
             self.engine.servo.spin_event_loop();
+            self.watch.turns.set(self.watch.turns.get() + 1);
             tokio::time::sleep(POLL_INTERVAL).await;
         }
     }
@@ -276,15 +395,6 @@ impl Browser {
                 return Err("evaluation did not return in time".to_owned());
             }
         }
-    }
-    /// Give up the page without running Servo's teardown.
-    ///
-    /// Dropping it properly would be better — the script thread's SpiderMonkey
-    /// `JSContext` is what limits an instance to one page — but the teardown
-    /// path blocks on the render backend, a task on this same runtime, and that
-    /// hangs the component outright. Leaking is the lesser failure.
-    pub(crate) fn forget(self) {
-        std::mem::forget(self);
     }
 }
 /// Render a JavaScript value as text a caller can read or parse.
