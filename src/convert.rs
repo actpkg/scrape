@@ -38,10 +38,11 @@ pub struct PageMeta {
 
 /// What the in-page metadata script returns (a `JSON.stringify` string).
 ///
-/// Consumed by the engine layer (Task 3); unused until then.
+/// Consumed only by the wasm-only tool body, so on the host build the type
+/// has no caller — the dead-code lint is silenced per-target, not deleted.
 #[derive(Debug, Default, Deserialize)]
 #[serde(crate = "act_sdk::__private::serde", default)]
-#[expect(dead_code, reason = "engine layer lands next and drives this")]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(crate) struct InPageMeta {
     title: Option<String>,
     description: Option<String>,
@@ -51,7 +52,7 @@ pub(crate) struct InPageMeta {
 
 impl InPageMeta {
     /// Merge into a `PageMeta`, choosing the url per input shape.
-    #[expect(dead_code, reason = "engine layer lands next and drives this")]
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub(crate) fn into_meta(self, mode: Mode, inline_html: bool) -> PageMeta {
         PageMeta {
             title: self.title,
