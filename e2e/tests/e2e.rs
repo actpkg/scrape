@@ -316,8 +316,13 @@ async fn readability_mode_drops_the_furniture() {
     client.cancel().await.ok();
 }
 
+/// The wasip2 build refused a second scrape (one JSContext per guest
+/// thread). The wasip3 rewrite keeps one warm engine and serves pages
+/// strictly sequentially — the second call in one instance must now
+/// succeed and carry its own content, proving the engine survives the
+/// full first-call lifecycle (this is the engine-reuse contract).
 #[tokio::test]
-async fn second_scrape_in_one_instance_is_refused() {
+async fn second_scrape_in_one_instance_succeeds() {
     let (client, _captured) = connect().await;
     let first = json!({"html": "<html><body><p>first</p></body></html>"});
     let second = json!({"html": "<html><body><p>second</p></body></html>"});
@@ -328,31 +333,30 @@ async fn second_scrape_in_one_instance_is_refused() {
         Some(true),
         "the first scrape must succeed: {ok:?}"
     );
+    let (first_md, _) = parts(&ok);
+    assert!(first_md.contains("first"), "first page converted, got: {first_md}");
 
-    let refused = call_scrape(&client, second).await;
-    assert_eq!(
-        refused.is_error,
+    let again = call_scrape(&client, second).await;
+    assert_ne!(
+        again.is_error,
         Some(true),
-        "the second scrape must be refused, got: {refused:?}"
+        "the second scrape in one instance must succeed, got: {again:?}"
     );
-    let text = refused
-        .content
-        .first()
-        .map(|c| match c {
-            rmcp::model::ContentBlock::Text(t) => t.text.clone(),
-            other => format!("{other:?}"),
-        })
-        .unwrap_or_default();
+    let (second_md, _) = parts(&again);
     assert!(
-        text.contains("one document"),
-        "the refusal explains the one-document limit, got: {text}"
+        second_md.contains("second"),
+        "second page converted with its own content, got: {second_md}"
+    );
+    assert!(
+        !second_md.contains("first"),
+        "no leakage from the first page, got: {second_md}"
     );
 
-    // The instance survives to explain itself: the server still answers.
+    // The instance survives past both calls: the server still answers.
     let tools = client
         .list_all_tools()
         .await
-        .expect("server still alive after refusal");
+        .expect("server still alive after two calls");
     assert!(!tools.is_empty());
 
     client.cancel().await.ok();

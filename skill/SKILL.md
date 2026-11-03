@@ -21,12 +21,11 @@ the Servo engine — scripts included — then returns two content parts:
   algorithm), dropping navigation, ads and footers. Use it for articles; use
   `full` for apps, dashboards, docs with heavy sidebars.
 
-## One scrape per instance
+## Sequential pages, one engine
 
-An instance scrapes exactly one document, then refuses further calls — the
-browser's JavaScript engine allows one context per thread and a wasm guest has
-one thread. Run one instance per page (`act call` one-shot is the intended
-shape). There is no crawl tool and no navigation: one call, one page.
+The engine starts once per instance and stays warm: calls navigate the same
+`WebView` and run strictly sequentially — one page at a time. There is no
+crawl tool and no navigation: each call is one independent page.
 
 ## Settling
 
@@ -47,9 +46,8 @@ detection; the page that gets captured is whatever existed when settling ended.
 
 ## What it does not do
 
-No crawl — one page per call, start another instance per page. No WebGL/GPU —
-CPU rasterization, heavy pages are slow rather than impossible. Only the
-DejaVu fonts compiled in (no CJK, Arabic or emoji text). Relative `srcset` and
-CSS `url()` references are not rewritten (only `href`/`src` are). A page that
-fails to load returns the engine's own error document converted — check the
-markdown content, not just the call status.
+No crawl — one page per call. No WebGL/GPU — CPU rasterization, heavy pages
+are slow rather than impossible. Only the Noto fonts compiled in (no emoji
+text). Relative `srcset` and CSS `url()` references are not rewritten (only
+`href`/`src` are). A page that fails to load returns the engine's own error
+document converted — check the markdown content, not just the call status.

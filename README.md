@@ -49,15 +49,14 @@ algorithm — dropping navigation, ads and footers. Articles want
 When no article can be detected, `readability` falls back to the full page
 rather than returning nothing.
 
-## One scrape per instance
+## Sequential pages, one engine
 
-An instance scrapes exactly one document, then refuses further calls — for
-the life of the instance, not once per call. Servo gives every document its
-own script thread, every script thread creates a SpiderMonkey `JSContext`,
-SpiderMonkey allows one per thread, and a wasip2 guest has exactly one
-thread. There is no navigation tool and no crawl: one call, one page. **This
-is not a crawler.** Start one instance per page — `act call` one-shot is the
-intended shape.
+The Servo engine and its one `WebView` start once per instance and stay warm
+across calls: every call navigates that `WebView` to its page and the next
+call replaces it. Pages run strictly sequentially — one page at a time, no
+parallelism. There is no navigation tool and no crawl: each call is one
+independent page. **This is not a crawler.** `act call` one-shot remains the
+intended shape for single pages.
 
 ## Settling
 
@@ -81,8 +80,7 @@ decision, not the page's.
 ## What it does not do
 
 - **No crawl, no navigation.** One call, one page; see above.
-- **Only the DejaVu fonts** are compiled in — no CJK, no Arabic, no colour
-  emoji.
+- **Only the Noto fonts** are compiled in — no colour emoji.
 - **No WebGL, no GPU.** Rasterization is CPU-side; a heavy page is slow
   rather than impossible.
 - **`srcset` and CSS `url()` references are not rewritten** — only `href` and
