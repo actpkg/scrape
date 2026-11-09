@@ -2075,7 +2075,7 @@ dependencies = [
 [[package]]
 name = "freetype-sys"
 version = "0.23.0"
-source = "git+https://github.com/GamePad64/freetype-sys?branch=wasip2#94b2fd7556cce8abe96064e21df459ae2b426aab"
+source = "git+https://github.com/GamePad64/freetype-sys?branch=wasip3#73ba06650687666e5ab55beca4f851f9642beb6c"
 dependencies = [
  "cc",
  "libz-sys",
@@ -7779,7 +7779,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
